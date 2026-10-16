@@ -19,3 +19,10 @@ export async function idDe(ctx: Ctx) {
   if (!Number.isInteger(n) || n <= 0) throw new HttpError(400, "id inválido");
   return n;
 }
+
+export type Ctx2 = { params: Promise<{ id: string; softwareId: string }> };
+export function entero(v: string) {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n <= 0) throw new HttpError(400, "id inválido");
+  return n;
+}
