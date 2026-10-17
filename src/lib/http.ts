@@ -4,7 +4,7 @@ import { HttpError } from "./errors";
 /** Envuelve un handler: JSON de salida y errores → códigos HTTP. */
 export function api<A extends unknown[]>(fn: (...a: A) => Promise<unknown>, status = 200) {
   return async (...a: A) => {
-    try { return Response.json(await fn(...a), { status }); }
+    try { const r = await fn(...a); return r instanceof Response ? r : Response.json(r, { status }); }
     catch (e) {
       if (e instanceof HttpError) return Response.json({ error: e.message }, { status: e.status });
       if (e instanceof ZodError) return Response.json({ error: "Datos inválidos", detalle: e.flatten() }, { status: 400 });
