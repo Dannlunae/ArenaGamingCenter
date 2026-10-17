@@ -26,3 +26,9 @@ export const reordenar = (q: Q, turnoId: number, ids: number[]) =>
 
 export const resumen = async (q: Q, turnoId: number) =>
   (await q`select coalesce(sum(monto), 0)::float8 as total, count(*)::int as n from yapes where turno_id = ${turnoId} and eliminado_at is null`)[0];
+
+/** Marca verificación de varios yapes de un turno. Devuelve cuántos actualizó. */
+export const verificar = async (q: Q, turnoId: number, ids: number[], vals: (boolean | null)[]) =>
+  (await q`update yapes y set verificacion = v.val
+           from unnest(${q.array(ids, 20)}::bigint[], ${q.array(vals, 16)}::boolean[]) as v(id, val)
+           where y.id = v.id and y.turno_id = ${turnoId} and y.eliminado_at is null`).count;

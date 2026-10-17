@@ -23,5 +23,16 @@ export const yapeCambio = z.object({
 export const ordenYapes = z.object({ ids: z.array(z.number().int()).min(1) });
 
 export const abrirTurno = z.object({ franjaId: z.number().int().nullish(), detalle });
-export const arqueoNuevo = z.object({ tipo: z.literal("media_hora").default("media_hora"), detalle, sistemaEfectivo: z.number().min(0) });
-export const cerrarTurno = z.object({ detalle, sistemaEfectivo: z.number().min(0) });
+// Al cuadrar: efectivo contado + (opcional) marcar yapes como verificados/falsos + comparar con el sistema.
+// Hay que dar al menos uno de los dos números del sistema.
+const verificaciones = z.array(z.object({ yapeId: z.number().int().positive(), verificacion: z.boolean().nullable() })).max(500).optional();
+const cuadreBase = z.object({
+  detalle,
+  sistemaEfectivo: z.number().min(0).nullish(),   // efectivo según el sistema
+  sistemaTotal: z.number().min(0).nullish(),      // ventas totales según el sistema (efectivo + yape)
+  verificaciones,
+});
+const unSistema = (x: { sistemaEfectivo?: number | null; sistemaTotal?: number | null }) => x.sistemaEfectivo != null || x.sistemaTotal != null;
+const msgSistema = "Indica sistemaEfectivo o sistemaTotal (o ambos)";
+export const arqueoNuevo = cuadreBase.extend({ tipo: z.literal("media_hora").default("media_hora") }).refine(unSistema, msgSistema);
+export const cerrarTurno = cuadreBase.refine(unSistema, msgSistema);

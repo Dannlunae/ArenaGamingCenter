@@ -37,7 +37,8 @@ export const turnoCambio = z.object({
 export const arqueoCambio = z.object({
   detalle: detalle.optional(),
   sistemaEfectivo: z.number().min(0).nullable().optional(),
-}).refine((x) => x.detalle !== undefined || x.sistemaEfectivo !== undefined, "Nada que cambiar");
+  sistemaTotal: z.number().min(0).nullable().optional(),
+}).refine((x) => x.detalle !== undefined || x.sistemaEfectivo !== undefined || x.sistemaTotal !== undefined, "Nada que cambiar");
 
 // ── Franjas ──
 const franjaBase = z.object({

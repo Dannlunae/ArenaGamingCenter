@@ -22,9 +22,11 @@ export const ultimoArqueoAt = async (q: Q, turnoId: number): Promise<string | nu
 export const intervaloCuadre = async (q: Q): Promise<number> =>
   Number((await q`select valor from ajustes where clave = 'intervalo_cuadre_min'`)[0]?.valor ?? 30);
 
-export const insertarArqueo = async (q: Q, turnoId: number, tipo: string, total: number, sistema: number | null, detalle: Detalle) => {
-  const a = (await q`insert into arqueos (turno_id, tipo, total_contado, sistema_efectivo)
-                     values (${turnoId}, ${tipo}, ${total}, ${sistema}) returning id, at, diferencia::float8 as diferencia`)[0];
+type Foto = { yapesTotal: number; yapesCantidad: number; sistemaTotal: number | null };
+export const insertarArqueo = async (q: Q, turnoId: number, tipo: string, total: number, sistema: number | null, detalle: Detalle, foto?: Foto) => {
+  const a = (await q`insert into arqueos (turno_id, tipo, total_contado, sistema_efectivo, yapes_total, yapes_cantidad, sistema_total)
+                     values (${turnoId}, ${tipo}, ${total}, ${sistema}, ${foto?.yapesTotal ?? null}, ${foto?.yapesCantidad ?? null}, ${foto?.sistemaTotal ?? null})
+                     returning id, at, diferencia::float8 as diferencia, diferencia_total::float8 as diferencia_total`)[0];
   const filas = detalle.map((d) => ({ arqueo_id: a.id, denominacion: d.denominacion, cantidad: d.cantidad }));
   if (filas.length) await q`insert into arqueo_detalle ${q(filas)}`;
   return a;
@@ -41,7 +43,8 @@ export const listar = (q: Q, f: { desde?: string; hasta?: string; estado?: strin
     (select a.total_contado::float8 from arqueos a where a.turno_id = t.id and a.tipo = 'inicio' and a.eliminado_at is null order by a.at limit 1) as contado_inicio,
     (select a.total_contado::float8 from arqueos a where a.turno_id = t.id and a.tipo = 'cierre' and a.eliminado_at is null order by a.at desc limit 1) as contado_cierre,
     (select a.sistema_efectivo::float8 from arqueos a where a.turno_id = t.id and a.tipo = 'cierre' and a.eliminado_at is null order by a.at desc limit 1) as sistema_cierre,
-    (select a.diferencia::float8 from arqueos a where a.turno_id = t.id and a.tipo = 'cierre' and a.eliminado_at is null order by a.at desc limit 1) as diferencia_cierre
+    (select a.diferencia::float8 from arqueos a where a.turno_id = t.id and a.tipo = 'cierre' and a.eliminado_at is null order by a.at desc limit 1) as diferencia_cierre,
+    (select a.diferencia_total::float8 from arqueos a where a.turno_id = t.id and a.tipo = 'cierre' and a.eliminado_at is null order by a.at desc limit 1) as diferencia_total_cierre
   from turnos t left join franjas fr on fr.id = t.franja_id
   where t.eliminado_at is null
     ${f.estado ? q`and t.estado = ${f.estado}` : q``}
@@ -51,6 +54,7 @@ export const listar = (q: Q, f: { desde?: string; hasta?: string; estado?: strin
 
 export const arqueosDe = (q: Q, turnoId: number) => q`
   select a.id, a.tipo, a.at, a.total_contado::float8 as total_contado, a.sistema_efectivo::float8 as sistema_efectivo, a.diferencia::float8 as diferencia,
+    a.yapes_total::float8 as yapes_total, a.yapes_cantidad, a.sistema_total::float8 as sistema_total, a.diferencia_total::float8 as diferencia_total,
     coalesce((select jsonb_agg(jsonb_build_object('denominacion', d.denominacion::float8, 'cantidad', d.cantidad, 'subtotal', d.subtotal::float8) order by d.denominacion desc)
               from arqueo_detalle d where d.arqueo_id = a.id), '[]'::jsonb) as detalle
   from arqueos a where a.turno_id = ${turnoId} and a.eliminado_at is null order by a.at`;
@@ -71,11 +75,13 @@ export const turnoAPapelera = async (q: Q, id: number) =>
 
 export const arqueoPorId = async (q: Q, id: number) =>
   (await q`select id, turno_id, tipo from arqueos where id = ${id} and eliminado_at is null`)[0];
-export const actualizarArqueo = async (q: Q, id: number, total: number | null, tocaSistema: boolean, sistema: number | null) =>
+export const actualizarArqueo = async (q: Q, id: number, total: number | null, tocaSistema: boolean, sistema: number | null, tocaTotal: boolean, sistemaTotal: number | null) =>
   (await q`update arqueos set total_contado = coalesce(${total}::numeric, total_contado),
-           sistema_efectivo = case when ${tocaSistema}::boolean then ${sistema}::numeric else sistema_efectivo end
+           sistema_efectivo = case when ${tocaSistema}::boolean then ${sistema}::numeric else sistema_efectivo end,
+           sistema_total = case when ${tocaTotal}::boolean then ${sistemaTotal}::numeric else sistema_total end
            where id = ${id}
-           returning id, turno_id, tipo, at, total_contado::float8 as total_contado, sistema_efectivo::float8 as sistema_efectivo, diferencia::float8 as diferencia`)[0];
+           returning id, turno_id, tipo, at, total_contado::float8 as total_contado, sistema_efectivo::float8 as sistema_efectivo, diferencia::float8 as diferencia,
+                     yapes_total::float8 as yapes_total, sistema_total::float8 as sistema_total, diferencia_total::float8 as diferencia_total`)[0];
 export const reemplazarDetalle = async (q: Q, arqueoId: number, detalle: Detalle) => {
   await q`delete from arqueo_detalle where arqueo_id = ${arqueoId}`;
   const filas = detalle.map((d) => ({ arqueo_id: arqueoId, denominacion: d.denominacion, cantidad: d.cantidad }));
@@ -83,3 +89,14 @@ export const reemplazarDetalle = async (q: Q, arqueoId: number, detalle: Detalle
 };
 export const arqueoAPapelera = async (q: Q, id: number) =>
   (await q`update arqueos set eliminado_at = now() where id = ${id} and eliminado_at is null returning id`)[0];
+
+// ───────── Vista previa del cuadre ─────────
+export const ultimoArqueo = async (q: Q, turnoId: number) =>
+  (await q`select id, tipo, at, total_contado::float8 as total_contado, sistema_efectivo::float8 as sistema_efectivo, diferencia::float8 as diferencia,
+                  yapes_total::float8 as yapes_total, sistema_total::float8 as sistema_total, diferencia_total::float8 as diferencia_total
+           from arqueos where turno_id = ${turnoId} and eliminado_at is null order by at desc limit 1`)[0];
+
+export const yapesHasta = (q: Q, turnoId: number, hasta: string) =>
+  q`select id, fecha, to_char(fecha at time zone 'America/Lima', 'YYYY-MM-DD HH24:MI:SS') as fecha_lima,
+           to_char(fecha at time zone 'America/Lima', 'HH24:MI') as hora, monto::float8 as monto, emisor, receptor, verificacion
+    from yapes where turno_id = ${turnoId} and eliminado_at is null and fecha <= ${hasta}::timestamptz order by fecha, id`;

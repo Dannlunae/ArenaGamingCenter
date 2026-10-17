@@ -37,10 +37,24 @@ No cuenta yapes eliminados ni de turnos eliminados.
 | `PATCH /turnos/:id` | `{franjaId?, abiertoAt?, cerradoAt?}` | Turno. El cierre no puede ser anterior a la apertura. |
 | `POST /turnos/:id/reabrir` | — | Turno abierto de nuevo (se descarta su arqueo de cierre). 409 si ya hay otro abierto. |
 | `DELETE /turnos/:id` | — | A la papelera. 409 si está abierto. |
-| `PATCH /arqueos/:id` | `{detalle?, sistemaEfectivo?}` (`null` lo borra) | Arqueo con total y diferencia recalculados |
 | `DELETE /arqueos/:id` | — | A la papelera |
 
 `POST /turnos/abrir` ahora devuelve también `advertencias:[…]` (abrir fuera del horario de la franja, o conteo distinto al cierre anterior) y valida `franjaId`.
+
+## Cuadre de caja con yapes
+Cada cuadre guarda una **foto** de los yapes del turno hasta ese momento (la calcula el servidor, no el cliente). Las operaciones son independientes, así que puedes ordenar tu interfaz como quieras: primero ver, luego contar, luego comparar.
+
+| Ruta | Parámetros | Devuelve |
+|---|---|---|
+| `GET /turnos/:id/cuadre` | — | **Vista previa**, sin guardar nada: `{desde, hasta, ultimoCuadre, yapes:[{id,fecha,fecha_lima,hora,monto,emisor,receptor,verificacion,enTramo}], acumulado:{total,cantidad}, tramo:{total,cantidad}, sinVerificar}`. `enTramo` = entró después del último cuadre; `acumulado` = todos los del turno hasta ahora. |
+| `POST /turnos/:id/arqueos` (cuadre) | `{detalle, sistemaEfectivo?, sistemaTotal?, verificaciones?}` — al menos uno de los dos números del sistema | `{arqueoId, totalContado, sistemaEfectivo, diferencia, sistemaTotal, diferenciaTotal, yapes:{total,cantidad}, verificados}` |
+| `POST /turnos/:id/cerrar` | los mismos | los mismos |
+| `PATCH /arqueos/:id` | `{detalle?, sistemaEfectivo?, sistemaTotal?}` (`null` los borra) | Arqueo con diferencias recalculadas |
+
+- `sistemaEfectivo`: lo que el sistema del negocio dice que hay **en efectivo**. `diferencia = contado − sistemaEfectivo`.
+- `sistemaTotal`: lo que el sistema dice que se **vendió en total** (efectivo + yape). `diferenciaTotal = (contado + yapes del turno) − sistemaTotal`.
+- `verificaciones: [{yapeId, verificacion: true|false|null}]`: marca yapes como verificados / no encontrados mientras cuadras. Todo o nada: si un `yapeId` no es del turno, no se guarda el cuadre.
+- La foto del arqueo (`yapes_total`, `yapes_cantidad`) no cambia aunque después se editen yapes. Los arqueos de `GET /turnos/:id` y la lista de turnos ya traen `yapes_total`, `sistema_total`, `diferencia_total`.
 
 ## Franjas (horarios que defines tú)
 | Ruta | Parámetros | Devuelve |
